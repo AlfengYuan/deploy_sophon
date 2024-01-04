@@ -13,7 +13,9 @@
 #include <string>
 #include <algorithm>
 #include <filesystem>
+
 #define USE_SOPHON_SAIL
+
 #include "miniocpp/client.h"
 
 
@@ -28,63 +30,77 @@
 #define CLIENTID    "ExampleClientPub"
 #define TOPIC       "MQTT Examples"
 #define PAYLOAD     "Hello World!"
-#define QOS         2
+#define QOS         2  // QoS 0: most once, 1:at least once, 2: only once
 #define TIMEOUT     1000000L
 
 using namespace std;
 
-const std::vector<std::vector<int>> colors = {{255, 255, 255},  {255, 255, 0},    {255, 0, 0},   {0, 0, 0}};
+const std::vector<std::vector<int>> colors = {{255, 255, 255},
+                                              {255, 255, 0},
+                                              {255, 0,   0},
+                                              {0,   0,   0}};
 const std::vector<std::string> m_class_names = {"Normal", "Yello Warning", "Red Warning", "Network Error"};
 
-enum class SQSY
-{
+enum class SQSY {
     NORMAL,
-    YELLO_WARN,
-    RED_WARN,
     INTERNET_WARN,
+    RED_WARN,
+    YELLO_WARN,
     SQSY_MAX
 };
 
-typedef class Cameras
-{
+typedef class Cameras {
 public:
     string rtsp;
     SQSY state;
     string addres;
-}Cameras;
+    string beId;
+    int monitorType;
+    string cameraId;
+} Cameras;
 
-static string get_current_time()
-{
+static time_t get_tNow() {
     //get timesnap
 //    std::chrono::system_clock::time_point now = std::chrono::system_clock::now() + std::chrono::minutes(2)
 //                                                - std::chrono::seconds(7);
     std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
     time_t tNow = std::chrono::system_clock::to_time_t(now);
+    return tNow;
+}
+
+static string get_warning_time(time_t tNow) {
+    std::tm *now_tm = std::localtime(&tNow);
+    char buffer[200];
+    std::strftime(buffer, size(buffer), "%Y-%m-%d %H:%M:%S", now_tm);
+    string wt = buffer;
+    return wt;
+}
+
+static string get_timesnap(time_t tNow) {
     std::tm *now_tm = std::localtime(&tNow);
     char buffer[200];
     std::strftime(buffer, size(buffer), "%Y%m%d%H%M%S", now_tm);
-//  string str_time = std::ctime(&tNow);
-    string str_time = buffer;
-    return str_time;
+    string wt = buffer;
+    return wt;
 }
 
-static void destroy_old_images(const std::string imgdir)
-{
-    for(auto &entry : std::filesystem::directory_iterator(imgdir))
-    {
-        if(is_regular_file(entry))
-        {
+static string get_current_time() {
+    return get_timesnap(get_tNow());
+}
+
+
+static void destroy_old_images(const std::string imgdir) {
+    for (auto &entry: std::filesystem::directory_iterator(imgdir)) {
+        if (is_regular_file(entry)) {
             std::string filename = entry.path().stem();
-            if(filename < get_current_time())
-            {
+            if (filename < get_current_time()) {
                 std::filesystem::remove(entry.path());
             }
         }
     }
 }
 
-static std::string md5(const std::string &input)
-{
+static std::string md5(const std::string &input) {
     // init EVP
     EVP_MD_CTX *mdctx;
     const EVP_MD *md;
@@ -106,8 +122,7 @@ static std::string md5(const std::string &input)
     EVP_MD_CTX_free(mdctx);
 
     std::string result;
-    for(unsigned int i = 0; i<md_len; i++)
-    {
+    for (unsigned int i = 0; i < md_len; i++) {
         char hex[3];
         sprintf(hex, "%02x", md_value[i]);
         result += hex;
@@ -116,19 +131,18 @@ static std::string md5(const std::string &input)
     return result;
 }
 
-int MQTT_PubMessage(Cameras &camera, string &timesnap, const string SN)
-{
+int MQTT_PubMessage(Cameras &camera, time_t &timesnap, const string SN) {
 
     // creat MQTTClient
     MQTTClient client;
     MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
     MQTTClient_message pubmsg = MQTTClient_message_initializer;
     MQTTClient_deliveryToken token;
-    char buffer[200];
+    char buffer[2000];
 
     int rc = 0;
-    if ((rc = MQTTClient_create(&client, ADDRESS, SN.c_str(), MQTTCLIENT_PERSISTENCE_NONE, NULL)) != MQTTCLIENT_SUCCESS)
-    {
+    if ((rc = MQTTClient_create(&client, ADDRESS, SN.c_str(), MQTTCLIENT_PERSISTENCE_NONE, NULL)) !=
+        MQTTCLIENT_SUCCESS) {
         printf("Failed to create client, return code %d\n", rc);
         // exit(EXIT_FAILURE);
         return 0;
@@ -136,28 +150,38 @@ int MQTT_PubMessage(Cameras &camera, string &timesnap, const string SN)
 
     conn_opts.keepAliveInterval = 20;
     conn_opts.cleansession = 1;
-    if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS)
-    {
+    if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS) {
         printf("Failed to connect, return code %d\n", rc);
         // exit(EXIT_FAILURE);
         return 0;
     }
 
-    sprintf(buffer, "{\"SN\": %s, \"address\":%s, \"state\": %d, \"time\":%s}", SN.c_str(), camera.addres.c_str(), int(camera.state), timesnap.c_str());
+    string imagePath = SN + "/" + camera.beId + camera.addres + "/" + to_string(int(camera.state))
+                       + "/" + get_timesnap(timesnap) + ".jpg";
+    sprintf(buffer, "{\"beId\": \"%s\","
+                    " \"zoneId\":\"%s\", "
+                    "\"warningType\": \"%d\", "
+                    "\"monitorType\": \"%d\", "
+                    "\"imagePath\": \"%s\", "
+                    "\"warningTime\": \"%s\", "
+                    "\"cameraId\": \"%s\""
+                    "}",
+            camera.beId.c_str(), camera.addres.c_str(), int(camera.state), int(camera.monitorType), imagePath.c_str(),
+            get_warning_time(timesnap).c_str(), camera.cameraId.c_str());
+
     pubmsg.payload = buffer;
-    pubmsg.payloadlen = (int)strlen(buffer);
+    pubmsg.payloadlen = (int) strlen(buffer);
     pubmsg.qos = QOS;
     pubmsg.retained = 0;
-    if ((rc = MQTTClient_publishMessage(client, TOPIC, &pubmsg, &token)) != MQTTCLIENT_SUCCESS)
-    {
+    if ((rc = MQTTClient_publishMessage(client, TOPIC, &pubmsg, &token)) != MQTTCLIENT_SUCCESS) {
         printf("Failed to publish message, return code %d\n", rc);
         // exit(EXIT_FAILURE);
         return 0;
     }
 
     printf("Waiting for up to %d seconds for publication of %s\n"
-                "on topic %s for client with ClientID: %s\n",
-                (int)(TIMEOUT/1000), PAYLOAD, TOPIC, CLIENTID);
+           "on topic %s for client with ClientID: %s\n",
+           (int) (TIMEOUT / 1000), PAYLOAD, TOPIC, CLIENTID);
     rc = MQTTClient_waitForCompletion(client, token, TIMEOUT);
     printf("Message with delivery token %d delivered\n", token);
 
@@ -169,8 +193,7 @@ int MQTT_PubMessage(Cameras &camera, string &timesnap, const string SN)
     return 0;
 }
 
-int Minio_File_Upload(Cameras &camera, string &timesnap, const string SN)
-{
+int Minio_File_Upload(Cameras &camera, time_t &timesnap, const string SN) {
     // Create S3 base URL.
     minio::s3::BaseUrl base_url("play.min.io");
 
@@ -187,12 +210,11 @@ int Minio_File_Upload(Cameras &camera, string &timesnap, const string SN)
     // Check 'asiatrip' bucket exist or not.
     bool exist;
     {
-        minio::s3::BucketExistsArgs  args;
+        minio::s3::BucketExistsArgs args;
         args.bucket = bucket_name;
 
         minio::s3::BucketExistsResponse resp = client.BucketExists(args);
-        if(!resp)
-        {
+        if (!resp) {
             std::cout << "unable to do bucket existence check; " << resp.Error() << std::endl;
             return EXIT_FAILURE;
         }
@@ -201,14 +223,12 @@ int Minio_File_Upload(Cameras &camera, string &timesnap, const string SN)
     }
 
     // Make 'asiatrip' bucket if not exist
-    if(!exist)
-    {
+    if (!exist) {
         minio::s3::MakeBucketArgs args;
         args.bucket = bucket_name;
 
         minio::s3::MakeBucketResponse resp = client.MakeBucket(args);
-        if(!resp)
-        {
+        if (!resp) {
             std::cout << "unable to create bucket; " << resp.Error() << std::endl;
             return EXIT_FAILURE;
         }
@@ -218,18 +238,18 @@ int Minio_File_Upload(Cameras &camera, string &timesnap, const string SN)
     // 'asiaphotos-2015.zip' to bucket 'asiatrip'
     minio::s3::UploadObjectArgs args;
     args.bucket = bucket_name;
-    args.object = SN + "/" + camera.addres + "/" + to_string(static_cast<int>(camera.state)) + "/" + timesnap + ".jpg";
+    args.object = SN + "/" + camera.beId + camera.addres + "/" + to_string(static_cast<int>(camera.state)) + "/" +
+                  get_timesnap(timesnap) + ".jpg";
     args.content_type = "image/jpeg";
 
-    if (camera.state == SQSY::INTERNET_WARN){
+    if (camera.state == SQSY::INTERNET_WARN) {
         args.filename = "./black.jpg";
     } else {
-        args.filename = "./results/images/" + timesnap + ".jpg";
+        args.filename = "./results/images/" + get_timesnap(timesnap) + ".jpg";
     }
 
     minio::s3::UploadObjectResponse resp = client.UploadObject(args);
-    if(!resp)
-    {
+    if (!resp) {
         std::cout << "unable to upload object; " << resp.Error() << std::endl;
         return EXIT_FAILURE;
     }
@@ -251,11 +271,11 @@ int Minio_File_Upload(Cameras &camera, string &timesnap, const string SN)
  *     @retval false Failure
  */
 bool inference(
-    const std::string& bmodel_path,
-    const std::string& input_path,
-    int                tpu_id,
-    SQSY*              out_value,
-    string&            out_timesnap){
+        const std::string &bmodel_path,
+        const std::string &input_path,
+        int tpu_id,
+        SQSY *out_value,
+        time_t &out_timesnap) {
     // init Engine
     sail::Engine engine(tpu_id);
 
@@ -270,7 +290,7 @@ bool inference(
     std::map<std::string, std::vector<int>> input_shapes;
     input_shapes[input_name] = input_shape;
     auto output_shape = engine.get_output_shape(graph_name, output_name);
-    auto input_dtype = engine.get_input_dtype (graph_name, input_name);
+    auto input_dtype = engine.get_input_dtype(graph_name, input_name);
     auto output_dtype = engine.get_output_dtype(graph_name, output_name);
 
     // get handle to create input and output tensors
@@ -279,23 +299,23 @@ bool inference(
     // allocate input and output tensors with both system and device memory
     sail::Tensor in(handle, input_shape, input_dtype, false, false);
     sail::Tensor out(handle, output_shape, output_dtype, true, true);
-    std::map<std::string, sail::Tensor*> input_tensors = {{input_name, &in}};
-    std::map<std::string, sail::Tensor*> output_tensors = {{output_name, &out}};
+    std::map<std::string, sail::Tensor *> input_tensors = {{input_name, &in}};
+    std::map<std::string, sail::Tensor *> output_tensors = {{output_name, &out}};
 
     // prepare input and output data in system memory with data type of float32
-    float* input = nullptr;
-    float* output = nullptr;
+    float *input = nullptr;
+    float *output = nullptr;
     int in_size = std::accumulate(input_shape.begin(), input_shape.end(),
-                                    1, std::multiplies<int>());
+                                  1, std::multiplies<int>());
     int out_size = std::accumulate(output_shape.begin(), output_shape.end(),
-                                    1, std::multiplies<int>());
+                                   1, std::multiplies<int>());
     if (input_dtype == BM_FLOAT32) {
-        input = reinterpret_cast<float*>(in.sys_data());
+        input = reinterpret_cast<float *>(in.sys_data());
     } else {
         input = new float[in_size];
     }
     if (output_dtype == BM_FLOAT32) {
-        output = reinterpret_cast<float*>(out.sys_data());
+        output = reinterpret_cast<float *>(out.sys_data());
     } else {
         output = new float[out_size];
     }
@@ -319,14 +339,14 @@ bool inference(
     sail::BMImage img0;
     int ret = decoder.read(handle, img0);
     if (ret != 0) {
-        cout<<"Finished to read the video!"<<endl;
-        out_timesnap = get_current_time();
+        cout << "Finished to read the video!" << endl;
+        out_timesnap = get_tNow();
         return false;
     }
 
     // preprocess
     sail::BMImage img1(handle, input_shape[2], input_shape[3],
-                    FORMAT_BGR_PLANAR, img_dtype);
+                       FORMAT_BGR_PLANAR, img_dtype);
     preprocessor.process(img0, img1);
     bmcv.bm_image_to_tensor(img1, in);
 
@@ -338,24 +358,38 @@ bool inference(
     if (output_dtype != BM_FLOAT32) {
         float scale = engine.get_output_scale(graph_name, output_name);
         if (output_dtype == BM_INT8) {
-            engine.scale_int8_to_fp32(reinterpret_cast<int8_t*>(out.sys_data()),
-                                    output, scale, out_size);
+            engine.scale_int8_to_fp32(reinterpret_cast<int8_t *>(out.sys_data()),
+                                      output, scale, out_size);
         } else if (output_dtype == BM_UINT8) {
-            engine.scale_uint8_to_fp32(reinterpret_cast<uint8_t*>(out.sys_data()),
-                                        output, scale, out_size);
+            engine.scale_uint8_to_fp32(reinterpret_cast<uint8_t *>(out.sys_data()),
+                                       output, scale, out_size);
         }
     }
 
     //postprocess
     auto result = postprocessor.process(output);
 
-    for (auto item : result) {
-        spdlog::info("Top 3 of in thread {} on tpu {}: [{}]", input_path, engine.get_device_id(), fmt::join(item, ", "));
+    for (auto item: result) {
+        spdlog::info("Top 3 of in thread {} on tpu {}: [{}]", input_path, engine.get_device_id(),
+                     fmt::join(item, ", "));
     }
 
-    *out_value =  SQSY(result[0][0]);
-
-
+    if (result[0][0] == 1)
+    {
+        *out_value = SQSY::YELLO_WARN;
+    }
+    else if (result[0][0] == 0)
+    {
+        *out_value = SQSY::NORMAL;
+    }
+    else if( result[0][0] == 2)
+    {
+        *out_value = SQSY::RED_WARN;
+    }
+    else{
+        *out_value = SQSY::NORMAL;
+    }
+//    *out_value = SQSY(result[0][0]);
     //save BMImage
     // int colors_num = colors.size();
     // auto color_tuple = std::make_tuple(colors[result[0][0]%colors_num][2], colors[result[0][0]%colors_num][1], 
@@ -367,23 +401,23 @@ bool inference(
     //     std::cout << "bmcv put text error !!!" << std::endl;
     // }
 
-    out_timesnap = get_current_time();
-    bmcv.imwrite("./results/images/" + out_timesnap + ".jpg" , img0);
+    out_timesnap = get_tNow();
+    bmcv.imwrite("./results/images/" + get_timesnap(out_timesnap) + ".jpg", img0);
 
 
     // free data
     if (input_dtype != BM_FLOAT32) {
-        delete [] input;
+        delete[] input;
     }
     if (output_dtype != BM_FLOAT32) {
-        delete [] output;
+        delete[] output;
     }
 
     return status;
 }
 
 
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[]) {
     //read params 
     if (argc < 3) {
         // cout << "USAGE:" << endl;
@@ -415,68 +449,62 @@ int main(int argc, char *argv[]){
     string sncode;
     ifstream ifs;
     ifs.open(input_path);
-    if(!ifs.is_open())
-    {
+    if (!ifs.is_open()) {
         cout << "open " << input_path << "error." << endl;
         return -1;
     }
 
-    if(!reader.parse(ifs, root))
-    {
+    if (!reader.parse(ifs, root)) {
         cout << "parser " << input_path << "error." << endl;
         return -1;
     }
 
-    if(root.isMember("cameras"))
-    {
+    if (root.isMember("cameras")) {
         members = root["cameras"].getMemberNames();
     }
 
-    for(Json::Value::Members::iterator it = members.begin(); it != members.end(); it++)
-    {
+    for (Json::Value::Members::iterator it = members.begin(); it != members.end(); it++) {
         struct Cameras camera;
         string key = *it;
         camera.addres = key;
         camera.rtsp = root["cameras"][key]["rtsp"].asString();
         camera.state = SQSY(root["cameras"][key]["state"].asInt());
+        camera.beId = root["cameras"][key]["beId"].asString();
+        camera.monitorType = root["cameras"][key]["monitorType"].asInt();
+        camera.cameraId = root["cameras"][key]["cameraId"].asString();
         mycameras.push_back(camera);
     }
 
-    if(root.isMember("SN"))
-    {
+    if (root.isMember("SN")) {
         sncode = md5(root["SN"].asString());
-    }
-    else{
+    } else {
         sncode = md5(get_current_time());
     }
 
     bool status = true;
     int ret = 0;
     //load bmodel and do inference
-    while(1)
-    {
-        for(size_t i = 0; i<mycameras.size(); i++)
-        {
+    while (1) {
+        for (size_t i = 0; i < mycameras.size(); i++) {
 
             //get timesnap
 
-            string out_timesnap;
+            time_t out_timesnap;
 
             string input_path = mycameras[i].rtsp;
             SQSY state = mycameras[i].state;
             SQSY out_state = SQSY::INTERNET_WARN; // 0 normal 1 yello warning 2 red warning 3 internet warning
 
             sail::BMImage out_bmimage;
-            try{
+            try {
                 status = inference(bmodel_path, input_path, tpu_id, &out_state, out_timesnap);
             }
-            catch(runtime_error &e)
-            {
+            catch (runtime_error &e) {
                 assert(out_state == SQSY::INTERNET_WARN);
-                out_timesnap = get_current_time();
+                out_timesnap = get_tNow();
             }
 
-            if(out_state == state) {
+            if (out_state == state) {
                 // Destory old images
                 destroy_old_images("results/images/");
                 continue;
@@ -484,15 +512,12 @@ int main(int argc, char *argv[]){
 
             mycameras[i].state = out_state;
 
-//            if(mycameras[i].state == SQSY::NORMAL) continue;
-
-            string jpg_name = "results/images/" + out_timesnap + ".jpg";
+            if(mycameras[i].state == SQSY::NORMAL) continue;
 
             // minio upload
             ret = Minio_File_Upload(mycameras[i], out_timesnap, sncode);
 
-            if(ret == 0)
-            {
+            if (ret == 0) {
                 // MQTTMessage publish
                 MQTT_PubMessage(mycameras[i], out_timesnap, sncode);
             }

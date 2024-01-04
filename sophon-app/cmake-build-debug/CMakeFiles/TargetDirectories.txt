@@ -1,0 +1,3 @@
+/home/yyf/Downloads/sophon/Release_2309TLS-public/RC2/sophon-app/cmake-build-debug/CMakeFiles/sophon-app.soc.dir
+/home/yyf/Downloads/sophon/Release_2309TLS-public/RC2/sophon-app/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/yyf/Downloads/sophon/Release_2309TLS-public/RC2/sophon-app/cmake-build-debug/CMakeFiles/rebuild_cache.dir

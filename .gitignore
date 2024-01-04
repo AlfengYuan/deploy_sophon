@@ -24,9 +24,8 @@
 *.avi
 *.data
 *.cfg
-*/*/build
-*/*/*.soc
-*/*/*.pcie
+*.soc
+*.pcie
 */*/docs
 */*/3rdparty/*/lib
 */*/3rdparty/*/lib/*

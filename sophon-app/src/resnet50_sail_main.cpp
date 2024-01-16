@@ -26,11 +26,9 @@
 #pragma warning(disable: 4996)
 #endif
 
-//#define ADDRESS     "tcp://broker.emqx.io:1883"
-#define ADDRESS     "tcp://172.16.250.195:1883"
+#define ADDRESS     "tcp://broker.emqx.io:1883"
 #define CLIENTID    "ExampleClientPub"
-//#define TOPIC       "MQTT Examples"
-#define TOPIC       "HundunVideo/suyu001/up"
+#define TOPIC       "MQTT Examples"
 #define PAYLOAD     "Hello World!"
 #define QOS         0  // QoS 0: most once, 1:at least once, 2: only once
 #define TIMEOUT     1000000L
@@ -158,7 +156,7 @@ int MQTT_PubMessage(Cameras &camera, time_t &timesnap, const string SN) {
         return 0;
     }
 
-    string imagePath = "http://218.93.243.58:9000/sqsy/" + SN + "/" + camera.beId + camera.addres + "/" + to_string(int(camera.state))
+    string imagePath = SN + "/" + camera.beId + camera.addres + "/" + to_string(int(camera.state))
                        + "/" + get_timesnap(timesnap) + ".jpg";
     sprintf(buffer, "{\"beId\": \"%s\","
                     " \"zoneId\":\"%s\", "
@@ -197,11 +195,11 @@ int MQTT_PubMessage(Cameras &camera, time_t &timesnap, const string SN) {
 
 int Minio_File_Upload(Cameras &camera, time_t &timesnap, const string SN) {
     // Create S3 base URL.
-    minio::s3::BaseUrl base_url("172.16.250.195:9000", false);
+    minio::s3::BaseUrl base_url("play.min.io");
 
     // Create credential provider
     minio::creds::StaticProvider provider(
-            "yyf", "yz123456"
+            "test", "test"
     );
 
     // Create S3 client

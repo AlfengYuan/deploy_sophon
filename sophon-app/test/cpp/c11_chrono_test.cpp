@@ -7,6 +7,7 @@
 #include <string>
 #include <ctime>
 #include <chrono>
+#include <unistd.h>
 using namespace std::chrono;
 using namespace std;
 
@@ -22,11 +23,12 @@ int main()
 
     // duration
     auto start = std::chrono::steady_clock::now();
-    for(int i = 0; i<100; i++) cout << "nice" << endl;
+    for(int i = 0; i<100000; i++) cout << "nice" << endl;
+    sleep(11);
     auto end = std::chrono::steady_clock::now();
-    auto tt = std::chrono::duration_cast<microseconds>(end - start);
-
-    cout << "program time = " << tt.count() << "microseconds" << endl;
-
+    auto tt = std::chrono::duration_cast<seconds>(end - start);
+    if(tt.count() > 10){
+        cout << "program time = " << tt.count() << "microseconds" << endl;
+    }
     return 0;
 }

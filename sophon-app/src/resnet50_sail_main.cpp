@@ -7,7 +7,7 @@
 #include "MQTTClient.h"
 #include <ctime>
 #include <iostream>
-
+#include <unistd.h>
 #include <fstream>
 #include <vector>
 #include <string>
@@ -484,6 +484,7 @@ int main(int argc, char *argv[]) {
     bool status = true;
     int ret = 0;
     //load bmodel and do inference
+    auto start = std::chrono::steady_clock::now();
     while (1) {
         for (size_t i = 0; i < mycameras.size(); i++) {
 
@@ -514,13 +515,20 @@ int main(int argc, char *argv[]) {
 
             if(mycameras[i].state == SQSY::NORMAL) continue;
 
-            // minio upload
-            ret = Minio_File_Upload(mycameras[i], out_timesnap, sncode);
+            auto end = std::chrono::steady_clock::now();
+            auto tt = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+            if(tt.count() > 900) {
+                // minio upload
+                ret = Minio_File_Upload(mycameras[i], out_timesnap, sncode);
 
-            if (ret == 0) {
-                // MQTTMessage publish
-                MQTT_PubMessage(mycameras[i], out_timesnap, sncode);
+                if (ret == 0) {
+                    // MQTTMessage publish
+                    MQTT_PubMessage(mycameras[i], out_timesnap, sncode);
+                }
+
+                start = std::chrono::steady_clock::now();
             }
+
 
             // Destory old images
             destroy_old_images("results/images/");
